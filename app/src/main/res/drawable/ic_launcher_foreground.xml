@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple side-view car silhouette on the adaptive-icon safe zone (108dp canvas, 72dp safe area). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,62 L22,52 Q22,48 26,47 L36,46 L44,36 Q46,34 49,34 L68,34 Q71,34 73,36 L80,46 L84,47 Q88,48 88,52 L88,62 Z" />
+    <!-- Windows -->
+    <path
+        android:fillColor="#B71C1C"
+        android:pathData="M40,46 L47,38 L57,38 L57,46 Z M60,46 L60,38 L67,38 L74,46 Z" />
+    <!-- Wheels -->
+    <path
+        android:fillColor="#212121"
+        android:pathData="M34,62 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <path
+        android:fillColor="#212121"
+        android:pathData="M76,62 m-7,0 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,62 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M76,62 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

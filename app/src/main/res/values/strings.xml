@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Car Simulator</string>
+    <string name="speed_label">Speed</string>
+    <string name="speed_units">km/h</string>
+    <string name="gear_label">Gear</string>
+    <string name="accelerate">Accelerate</string>
+    <string name="brake">Brake</string>
+</resources>

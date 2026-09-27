@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+.kotlin/
+
+# Local machine config
+local.properties
+
+# Signing — never commit release keys
+keystore/
+keystore.properties
+*.jks
+*.keystore
+
+# Misc
+.DS_Store
+*.log
+.claude/settings.local.json
