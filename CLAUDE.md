@@ -4,6 +4,15 @@ Android crash-test game. Kotlin, Jetpack Compose, OpenGL ES 2, single `app`
 module, no game engine. Conventions match the other AaronDoesIt Android apps
 (TalkBridge is the reference for Gradle setup and signing).
 
+## Cloud sessions
+
+The Android SDK is not pre-installed in cloud containers and its host,
+dl.google.com, is not in the default network allowlist. The environment
+needs Custom network access that includes `dl.google.com`, and
+`scripts/setup-android-sdk.sh` as its setup script (or run it by hand). It
+installs command-line tools, platform 35 and build tools 35.0.0 into
+`$ANDROID_HOME` and writes `local.properties`.
+
 ## Commands
 
 - Build: `./gradlew assembleDebug`
