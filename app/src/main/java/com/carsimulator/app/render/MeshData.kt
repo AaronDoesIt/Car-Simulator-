@@ -70,6 +70,71 @@ class MeshData {
         }
     }
 
+    /**
+     * Six-sided solid from eight corners: [c] 0..3 are the bottom quad and
+     * 4..7 the top quad, both ordered rear-left, front-left, front-right,
+     * rear-right (X forward, Z right). Faces are flat shaded and wound so
+     * their normals point away from the centroid, whatever the corner layout.
+     * [faceColors] order: bottom, top, front, back, left, right.
+     */
+    fun addHull(c: Array<Vec3>, faceColors: IntArray) {
+        require(c.size == 8 && faceColors.size == 6)
+        val centroid = c.reduce { a, b -> a + b } / 8.0
+        val faces = arrayOf(
+            intArrayOf(0, 1, 2, 3), intArrayOf(4, 5, 6, 7),
+            intArrayOf(1, 2, 6, 5), intArrayOf(0, 3, 7, 4),
+            intArrayOf(0, 1, 5, 4), intArrayOf(3, 2, 6, 7),
+        )
+        for ((fi, f) in faces.withIndex()) {
+            val p0 = c[f[0]]; val p1 = c[f[1]]; val p2 = c[f[2]]; val p3 = c[f[3]]
+            var n = ((p1 - p0) cross (p2 - p0))
+            if (n.lengthSquared < 1e-12) n = ((p2 - p0) cross (p3 - p0))
+            n = n.normalized()
+            val faceCentre = (p0 + p1 + p2 + p3) / 4.0
+            val outward = (n dot (faceCentre - centroid)) >= 0
+            val (r, g, b) = rgb(faceColors[fi])
+            val nn = if (outward) n else -n
+            val i0 = addVertex(p0, nn, r, g, b)
+            val i1 = addVertex(p1, nn, r, g, b)
+            val i2 = addVertex(p2, nn, r, g, b)
+            val i3 = addVertex(p3, nn, r, g, b)
+            if (outward) addQuad(i0, i1, i2, i3) else addQuad(i0, i3, i2, i1)
+        }
+    }
+
+    /** Cone with its base on y = 0 and apex at y = [height], open underneath. */
+    fun addCone(center: Vec3, radius: Double, height: Double, segments: Int, color: Int) {
+        val (r, g, b) = rgb(color)
+        val apex = center + Vec3(0.0, height, 0.0)
+        for (i in 0 until segments) {
+            val a0 = 2 * PI * i / segments
+            val a1 = 2 * PI * (i + 1) / segments
+            val p0 = center + Vec3(cos(a0) * radius, 0.0, sin(a0) * radius)
+            val p1 = center + Vec3(cos(a1) * radius, 0.0, sin(a1) * radius)
+            val n = ((p1 - p0) cross (apex - p0)).normalized()
+            val outward = (n dot ((p0 + p1) * 0.5 - center)) >= 0
+            val nn = if (outward) n else -n
+            val i0 = addVertex(p0, nn, r, g, b)
+            val i1 = addVertex(p1, nn, r, g, b)
+            val i2 = addVertex(apex, nn, r, g, b)
+            if (outward) addTriangle(i0, i1, i2) else addTriangle(i0, i2, i1)
+        }
+    }
+
+    /** Flat disc in the XZ plane facing +Y, unit radius, centred on the origin. */
+    fun addDisc(segments: Int, color: Int) {
+        val (r, g, b) = rgb(color)
+        val centre = addVertex(Vec3.ZERO, Vec3.Y, r, g, b)
+        val ring = IntArray(segments) { i ->
+            val a = 2 * PI * i / segments
+            addVertex(Vec3(cos(a), 0.0, sin(a)), Vec3.Y, r, g, b)
+        }
+        for (i in 0 until segments) {
+            // Counter-clockwise seen from above (+Y): angle decreasing.
+            addTriangle(centre, ring[(i + 1) % segments], ring[i])
+        }
+    }
+
     /** Cylinder whose axis runs along local Z (a wheel), centred on the origin. */
     fun addCylinderZ(radius: Double, width: Double, segments: Int, sideColor: Int, capColor: Int) {
         val (sr, sg, sb) = rgb(sideColor)
@@ -80,14 +145,15 @@ class MeshData {
             val a = 2 * PI * i / segments
             ring.add(Vec3(cos(a) * radius, sin(a) * radius, 0.0))
         }
-        // Sides.
+        // Sides, with alternating shade so the tread reads as tread when it spins.
         for (i in 0 until segments) {
             val p0 = ring[i]; val p1 = ring[(i + 1) % segments]
             val n = ((p0 + p1) * 0.5).normalized()
-            val a = addVertex(Vec3(p0.x, p0.y, -hw), n, sr, sg, sb)
-            val b = addVertex(Vec3(p1.x, p1.y, -hw), n, sr, sg, sb)
-            val c = addVertex(Vec3(p1.x, p1.y, hw), n, sr, sg, sb)
-            val d = addVertex(Vec3(p0.x, p0.y, hw), n, sr, sg, sb)
+            val k = if (i % 2 == 0) 1f else 0.7f
+            val a = addVertex(Vec3(p0.x, p0.y, -hw), n, sr * k, sg * k, sb * k)
+            val b = addVertex(Vec3(p1.x, p1.y, -hw), n, sr * k, sg * k, sb * k)
+            val c = addVertex(Vec3(p1.x, p1.y, hw), n, sr * k, sg * k, sb * k)
+            val d = addVertex(Vec3(p0.x, p0.y, hw), n, sr * k, sg * k, sb * k)
             addQuad(a, b, c, d)
         }
         // Caps with a hub-coloured spoke look: alternate wedge colours.

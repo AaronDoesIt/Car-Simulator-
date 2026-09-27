@@ -59,6 +59,7 @@ fun ResultsScreen(
             Stat("Air time", "%.1f s".format(result.longestAirSeconds))
             Stat("Top speed", "${result.maxSpeedMph.roundToInt()} mph")
             Stat("Hardest hit", "${result.strongestImpactMph.roundToInt()} mph")
+            Stat("Hit angle", "${result.strongestImpactAngleDeg.roundToInt()}°")
             if (result.rolledOver) Stat("Rolled", "yes")
         }
         Spacer(Modifier.height(24.dp))

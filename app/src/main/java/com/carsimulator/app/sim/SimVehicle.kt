@@ -43,6 +43,8 @@ class Wheel(
 data class VehicleEvents(
     val chassisImpacts: Int = 0,
     val strongestImpactSpeed: Double = 0.0,
+    /** Angle between travel and the surface for the strongest impact, degrees; 90 is square-on. */
+    val strongestImpactAngleDeg: Double = 0.0,
     val wheelsDetachedThisFrame: Int = 0,
     val boostedThisFrame: Boolean = false,
 )
@@ -152,16 +154,20 @@ class SimVehicle(
         val dt = dtClamped / substeps
         var impacts = 0
         var strongest = 0.0
+        var strongestAngle = 0.0
         var detachedNow = 0
         var boostedNow = false
         repeat(substeps) {
             val r = step(dt)
             impacts += r.chassisImpacts
-            strongest = max(strongest, r.strongestImpactSpeed)
+            if (r.strongestImpactSpeed > strongest) {
+                strongest = r.strongestImpactSpeed
+                strongestAngle = r.strongestImpactAngleDeg
+            }
             detachedNow += r.wheelsDetachedThisFrame
             boostedNow = boostedNow || r.boostedThisFrame
         }
-        return VehicleEvents(impacts, strongest, detachedNow, boostedNow)
+        return VehicleEvents(impacts, strongest, strongestAngle, detachedNow, boostedNow)
     }
 
     private fun step(dt: Double): VehicleEvents {
@@ -207,9 +213,16 @@ class SimVehicle(
                     body.applyForce(up * force, w.contactPoint)
 
                     if (bottomOut > 0.02) {
+                        // A wheel driven into a face that opposes its motion (a curb, a wall)
+                        // takes far more than one that bottoms on a gentle crest.
                         val local = body.toLocal(w.contactPoint)
-                        val vn = body.velocityAt(w.contactPoint) dot w.contactNormal
-                        damage.addImpact(local, 0.5 * spec.massKg / 4 * vn * vn * (bottomOut / w.radius))
+                        val vc = body.velocityAt(w.contactPoint)
+                        val vn = vc dot w.contactNormal
+                        val obliquity = if (vc.length > 1e-6) (-vn / vc.length).coerceIn(0.0, 1.0) else 1.0
+                        damage.addImpact(
+                            local, 0.5 * spec.massKg / 4 * vn * vn * (bottomOut / w.radius),
+                            q.inverseRotate(w.contactNormal), obliquity,
+                        )
                     }
                     if (force > wheelDetachLoadN) {
                         detachWheel(w)
@@ -233,6 +246,7 @@ class SimVehicle(
         // --- Chassis against the ground ---------------------------------------------
         var impacts = 0
         var strongest = 0.0
+        var strongestAngle = 0.0
         anyChassisContact = false
         for ((i, local) in contactPointsLocal.withIndex()) {
             val p = body.toWorld(local)
@@ -250,15 +264,21 @@ class SimVehicle(
             val ft = if (vtLen > 1e-3) vt * (-CHASSIS_FRICTION * fn / vtLen) else Vec3.ZERO
             body.applyForce(n * fn + ft, p)
 
+            val nLocal = q.inverseRotate(n)
             if (!contactWasTouching[i]) {
                 contactWasTouching[i] = true
                 if (vn < -1.0) {
                     impacts++
-                    strongest = max(strongest, -vn)
-                    damage.addImpact(local, 0.5 * spec.massKg / 4 * vn * vn)
+                    val vLen = v.length
+                    val obliquity = if (vLen > 1e-6) (-vn / vLen).coerceIn(0.0, 1.0) else 1.0
+                    if (-vn > strongest) {
+                        strongest = -vn
+                        strongestAngle = Math.toDegrees(kotlin.math.asin(obliquity))
+                    }
+                    damage.addImpact(local, 0.5 * spec.massKg / 4 * vn * vn, nLocal, obliquity)
                 }
             } else if (vtLen > 0.5) {
-                damage.addScrape(local, fn, vtLen, dt)
+                damage.addScrape(local, fn, vtLen, dt, nLocal)
             }
         }
 
@@ -291,7 +311,7 @@ class SimVehicle(
         }
         if (body.orientation.up.y < 0.15) rolledOver = true
 
-        return VehicleEvents(impacts, strongest, detachedNow, boostedNow)
+        return VehicleEvents(impacts, strongest, strongestAngle, detachedNow, boostedNow)
     }
 
     private fun applyTyreForces(w: Wheel, dt: Double) {
@@ -340,7 +360,7 @@ class SimVehicle(
         val kick = body.orientation.up * 6.0 + body.orientation.right * (if (w.attachLocal.z < 0) -4.0 else 4.0)
         w.freeVelocity = body.velocityAt(centre) * 0.6 + kick
         w.freeSpin = 0.0
-        damage.addImpact(w.attachLocal, 0.5 * spec.massKg / 4 * 20.0 * 20.0)
+        damage.addImpact(w.attachLocal, 0.5 * spec.massKg / 4 * 20.0 * 20.0, Vec3.Y, 1.0)
     }
 
     private fun stepFreeWheel(w: Wheel, dt: Double, gravity: Vec3) {

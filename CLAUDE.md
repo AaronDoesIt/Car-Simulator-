@@ -14,12 +14,14 @@ module, no game engine. Conventions match the other AaronDoesIt Android apps
 
 - `sim/` is pure Kotlin with no Android imports. Everything physical lives
   there: `SimVehicle` (raycast wheels, chassis contacts, boost, detachment),
-  `Track` (heightfield of `Obstacle`s), `DamageModel`, `VehicleCatalog`.
+  `Track` (heightfield of `Obstacle`s on a `RoadProfile` with noise `Terrain`
+  beside it), `DamageModel` (angle-aware), `VehicleCatalog`.
 - `game/` is also pure Kotlin: `LevelCatalog` (speed and course per level),
   `GameSession` (LAUNCH → IMPACT → RESULTS, slow motion, scoring),
   `CameraDirector` (chase view, cut to side view on impact).
-- `render/` has `MeshData` and the mesh builders (pure Kotlin, testable) plus
-  `GlMesh`, `ShaderProgram` and `GameRenderer` (Android GL).
+- `render/` has `MeshData` and the mesh builders `VehicleMeshBuilder`,
+  `TrackMeshBuilder`, `SceneryBuilder` (pure Kotlin, testable) plus `GlMesh`,
+  `ShaderProgram` and `GameRenderer` (Android GL).
 - `ui/` is Compose. `RunScreen` hosts a `GLSurfaceView` and maps finger drag
   to steering. The sim is stepped on the GL thread inside `onDrawFrame`.
 

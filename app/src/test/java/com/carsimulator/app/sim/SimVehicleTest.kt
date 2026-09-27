@@ -113,4 +113,41 @@ class SimVehicleTest {
         assertTrue("damaged or wheels lost", v.damage.total > 0.05 || v.wheelsLost > 0)
         for (w in v.wheels) assertTrue("wheel finite", w.centerWorld.x.isFinite() && w.centerWorld.y.isFinite())
     }
+
+    @Test
+    fun `a square curb hit does more damage than a ramp of the same height`() {
+        val mps = 80 * 0.44704
+        val curb = SimVehicle(s10, flatTrack(boostMps = mps, obstacles = listOf(Obstacle.Curb(100.0, 30.0, 0.5))))
+        val ramp = SimVehicle(s10, flatTrack(boostMps = mps, obstacles = listOf(Obstacle.Ramp(100.0, 6.0, 0.5))))
+        curb.throttle = 1.0; ramp.throttle = 1.0
+        run(curb, 6.0); run(ramp, 6.0)
+        assertTrue("curb ${curb.damage.total} vs ramp ${ramp.damage.total}", curb.damage.total > ramp.damage.total * 1.5)
+    }
+
+    @Test
+    fun `crest jump sends the truck flying and it lands hard`() {
+        val mps = 120 * 0.44704
+        val crest = RoadProfile.CrestJump(startX = 100.0, climbLength = 90.0, height = 16.0, dropLength = 5.0)
+        val t = Track(10.0, 2000.0, emptyList(), BoostStrip(15.0, 30.0, mps), 100.0, profile = crest, terrain = Terrain(1))
+        val v = SimVehicle(s10, t)
+        v.throttle = 1.0
+        run(v, 12.0)
+        assertTrue("flew, air=${v.longestAirTime}", v.longestAirTime > 0.8)
+        assertTrue("came back down, y=${v.position.y}", v.position.y < 5.0)
+        assertTrue("finite", v.position.x.isFinite())
+        assertTrue("landing hurt, damage=${v.damage.total}", v.damage.total > 0.05)
+    }
+
+    @Test
+    fun `rollercoaster at 150 mph stays sane`() {
+        val mps = 150 * 0.44704
+        val coaster = RoadProfile.RollerCoaster(startX = 60.0, endX = 400.0, amplitude = 12.0, wavelength = 55.0)
+        val t = Track(10.0, 2000.0, emptyList(), BoostStrip(15.0, 30.0, mps), 100.0, profile = coaster, terrain = Terrain(2))
+        val v = SimVehicle(VehicleCatalog.byId("corvette_c7_2016"), t)
+        v.throttle = 1.0
+        run(v, 10.0)
+        assertTrue("finite", v.position.x.isFinite() && v.position.y.isFinite())
+        assertTrue("got airborne on the hills, air=${v.longestAirTime}", v.longestAirTime > 0.2)
+        assertTrue("passed the hills, x=${v.position.x}", v.position.x > 300.0)
+    }
 }

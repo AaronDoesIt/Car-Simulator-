@@ -11,9 +11,10 @@ class GameSessionTest {
     fun `levels get faster and rotate courses`() {
         val l1 = LevelCatalog.build(1)
         val l2 = LevelCatalog.build(2)
-        val l7 = LevelCatalog.build(7)
+        val l10 = LevelCatalog.build(10)
         assertTrue(l2.targetSpeedMph > l1.targetSpeedMph)
-        assertEquals(l1.courseName, l7.courseName)
+        assertEquals(l1.courseName, l10.courseName)
+        assertEquals(LevelCatalog.courseNames.size, (1..9).map { LevelCatalog.build(it).courseName }.toSet().size)
         assertTrue(l1.courseName != l2.courseName)
         assertTrue(l2.track.obstacleStartX > l1.track.obstacleStartX)
     }
@@ -65,5 +66,23 @@ class GameSessionTest {
         val r = session.result()
         assertTrue("finite score", r.score in 0..1_000_000)
         assertTrue("reached high speed, got ${r.maxSpeedMph}", r.maxSpeedMph > 300.0)
+    }
+
+    @Test
+    fun `hill courses run to results with the camera above the ground`() {
+        for (level in listOf(3, 6, 9)) {
+            val session = GameSession(VehicleCatalog.byId("suburban_2001_lifted"), LevelCatalog.build(level))
+            var t = 0.0
+            var minClearance = Double.MAX_VALUE
+            while (session.phase != Phase.RESULTS && t < 90.0) {
+                session.update(1.0 / 60)
+                t += 1.0 / 60
+                val eye = session.camera.state.eye
+                minClearance = minOf(minClearance, eye.y - session.level.track.heightAt(eye.x, eye.z))
+            }
+            assertEquals("level $level finished", Phase.RESULTS, session.phase)
+            assertTrue("level $level camera stayed above ground, min=$minClearance", minClearance > 0.5)
+            assertTrue("level $level finite score", session.result().score in 0..1_000_000)
+        }
     }
 }

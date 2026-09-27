@@ -24,8 +24,11 @@ generated in code; there are no model or texture files.
    garage.
 
 Levels start at 45 mph and add 25 mph each round, so level 20 is 520 mph.
-Courses rotate: speed-bump grid, monster bump, launch ramp, loading dock,
-crater field, staircase. Each gets taller or deeper as the level number rises.
+Nine courses rotate. Six are bolted onto the road: speed-bump grid, monster
+bump, launch ramp, loading dock, crater field, staircase. Three are the road
+itself: a crest jump that ends in a cliff, a rollercoaster of hills, and a
+canyon drop. Each gets taller or deeper as the level number rises, and the
+landscape either side of the strip is always hills growing into mountains.
 
 ## Garage
 
@@ -61,11 +64,26 @@ has no Android dependencies, so it runs in plain JVM unit tests.
   forces and friction, so the body can land on its roof, bumper or side.
 - Wheels tear off when a corner's load exceeds a multiple of vehicle weight
   and then fly as free bodies.
-- Six-panel damage model driven by impact energy; the renderer crumples the
-  mesh toward the body centre by each panel's damage.
+- Six-panel damage model driven by impact energy and angle. A square hit
+  crumples; a glancing one scrapes and delivers a quarter of the crush. The
+  panel facing the surface takes the hit, so a nose-first wall strike folds
+  the front and a side swipe folds the door. The results screen reports the
+  angle of the hardest hit.
+- The road has its own height profile (crests, canyons, rollercoasters) and
+  the land beside it is deterministic noise terrain up to mountain height.
 - Sub-stepping keeps wheel samples under 8 cm apart even at 500 mph.
 - Aerodynamic drag is scaled to 35 % of real so the boost speed survives to
   the obstacles; everything else uses real units.
+
+## Graphics
+
+Everything is generated: a gradient sky, hemisphere ambient plus a sun,
+distance fog, a terrain mesh that colours grass, rock and snow by altitude
+and slope, a forest of conifers and boulders scattered by hash, a soft
+shadow under the car that fades as it flies, and bodies built from tapered
+hulls with glass, wheel arches, mirrors, grille, lights, bumpers, bed rails,
+roof racks and spoilers according to body style. The body mesh crumples with
+damage and wheels spin, steer and tumble off.
 
 ## Build
 

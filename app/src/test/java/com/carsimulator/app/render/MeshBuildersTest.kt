@@ -43,7 +43,10 @@ class MeshBuildersTest {
         var maxY = 0f
         for (m in meshes) {
             val v = m.vertexArray()
-            for (i in 0 until m.vertexCount) maxY = maxOf(maxY, v[i * MeshData.STRIDE + 1])
+            for (i in 0 until m.vertexCount) {
+                val onRoad = kotlin.math.abs(v[i * MeshData.STRIDE + 2]) <= level.track.roadHalfWidth
+                if (onRoad) maxY = maxOf(maxY, v[i * MeshData.STRIDE + 1])
+            }
         }
         val bump = level.track.obstacles.first()
         val peak = level.track.heightAt((bump.startX + bump.endX) / 2, 0.0)
@@ -75,6 +78,43 @@ class MeshBuildersTest {
 
             val wheel = VehicleMesh.buildWheel(spec)
             assertTrue(wheel.indexCount > 0)
+        }
+    }
+
+    @Test
+    fun `hull faces point outward and a disc faces up`() {
+        val m = MeshData()
+        m.addHull(
+            arrayOf(
+                Vec3(-1.0, 0.0, -1.0), Vec3(1.0, 0.0, -1.0), Vec3(1.0, 0.0, 1.0), Vec3(-1.0, 0.0, 1.0),
+                Vec3(-0.5, 1.0, -0.5), Vec3(0.5, 1.0, -0.5), Vec3(0.5, 1.0, 0.5), Vec3(-0.5, 1.0, 0.5),
+            ),
+            IntArray(6) { 0xFFFFFF },
+        )
+        val v = m.vertexArray()
+        val centroid = Vec3(0.0, 0.5, 0.0)
+        for (i in 0 until m.vertexCount) {
+            val p = Vec3(v[i * 9].toDouble(), v[i * 9 + 1].toDouble(), v[i * 9 + 2].toDouble())
+            val n = Vec3(v[i * 9 + 3].toDouble(), v[i * 9 + 4].toDouble(), v[i * 9 + 5].toDouble())
+            assertTrue("normal points away from centroid", (n dot (p - centroid)) > 0)
+        }
+        val d = MeshData().also { it.addDisc(12, 0) }
+        val dv = d.vertexArray()
+        for (i in 0 until d.vertexCount) assertEquals(1f, dv[i * 9 + 4], 1e-6f)
+    }
+
+    @Test
+    fun `scenery builds within index limits on a hilly level`() {
+        val track = LevelCatalog.build(9).track
+        val meshes = SceneryBuilder.build(track)
+        assertTrue("some trees", meshes.isNotEmpty() && meshes.sumOf { it.vertexCount } > 1000)
+        for (m in meshes) {
+            assertTrue(m.vertexCount < 65535)
+            val v = m.vertexArray()
+            assertTrue(v.all { it.isFinite() })
+            for (i in 0 until m.vertexCount) {
+                assertTrue("trees stay off the road", kotlin.math.abs(v[i * 9 + 2]) > track.roadHalfWidth + 2)
+            }
         }
     }
 }

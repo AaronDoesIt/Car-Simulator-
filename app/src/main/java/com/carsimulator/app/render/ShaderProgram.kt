@@ -12,6 +12,10 @@ class ShaderProgram {
     val uModel: Int
     val uLightDir: Int
     val uFog: Int
+    val uSky: Int
+    val uGround: Int
+    val uUnlit: Int
+    val uAlpha: Int
 
     init {
         val vs = compile(GLES20.GL_VERTEX_SHADER, VERTEX)
@@ -32,6 +36,10 @@ class ShaderProgram {
         uModel = GLES20.glGetUniformLocation(id, "uModel")
         uLightDir = GLES20.glGetUniformLocation(id, "uLightDir")
         uFog = GLES20.glGetUniformLocation(id, "uFog")
+        uSky = GLES20.glGetUniformLocation(id, "uSky")
+        uGround = GLES20.glGetUniformLocation(id, "uGround")
+        uUnlit = GLES20.glGetUniformLocation(id, "uUnlit")
+        uAlpha = GLES20.glGetUniformLocation(id, "uAlpha")
     }
 
     fun use() = GLES20.glUseProgram(id)
@@ -69,14 +77,22 @@ class ShaderProgram {
             precision mediump float;
             uniform vec3 uLightDir;
             uniform vec3 uFog;
+            uniform vec3 uSky;
+            uniform vec3 uGround;
+            uniform float uUnlit;
+            uniform float uAlpha;
             varying vec3 vNormal;
             varying vec3 vColor;
             varying float vDepth;
             void main() {
-                float diffuse = max(dot(normalize(vNormal), uLightDir), 0.0);
-                vec3 lit = vColor * (0.42 + 0.68 * diffuse);
-                float fog = clamp((vDepth - 120.0) / 900.0, 0.0, 0.85);
-                gl_FragColor = vec4(mix(lit, uFog, fog), 1.0);
+                vec3 n = normalize(vNormal);
+                float diffuse = max(dot(n, uLightDir), 0.0);
+                // Hemisphere ambient: sky colour from above, ground bounce from below.
+                vec3 ambient = mix(uGround, uSky, n.y * 0.5 + 0.5);
+                vec3 lit = vColor * (ambient * 0.6 + vec3(0.78) * diffuse);
+                lit = mix(lit, vColor, uUnlit);
+                float fog = clamp((vDepth - 150.0) / 1100.0, 0.0, 0.9) * (1.0 - uUnlit);
+                gl_FragColor = vec4(mix(lit, uFog, fog), uAlpha);
             }
         """
     }

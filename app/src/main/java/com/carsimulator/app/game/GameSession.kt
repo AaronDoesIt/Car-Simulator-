@@ -24,6 +24,8 @@ data class RunResult(
     val maxSpeedMph: Double,
     val rolledOver: Boolean,
     val strongestImpactMph: Double,
+    /** Angle between travel and the surface on the hardest hit, degrees; 90 is square-on. */
+    val strongestImpactAngleDeg: Double,
 )
 
 /**
@@ -50,6 +52,7 @@ class GameSession(val spec: VehicleSpec, val level: Level) {
     private var settledFor = 0.0
     private var slowMotionLeft = 0.0
     private var strongestImpact = 0.0
+    private var strongestImpactAngle = 0.0
     private var impactCount = 0
 
     val countdownRemaining: Double get() = max(0.0, countdown)
@@ -92,10 +95,13 @@ class GameSession(val spec: VehicleSpec, val level: Level) {
 
         val events = vehicle.advance(dt * timeScale)
         impactCount += events.chassisImpacts
-        strongestImpact = max(strongestImpact, events.strongestImpactSpeed)
+        if (events.strongestImpactSpeed > strongestImpact) {
+            strongestImpact = events.strongestImpactSpeed
+            strongestImpactAngle = events.strongestImpactAngleDeg
+        }
 
         if (phase == Phase.LAUNCH) {
-            val reachedObstacles = vehicle.position.x >= level.track.obstacleStartX - vehicle.spec.lengthM
+            val reachedObstacles = vehicle.position.x >= level.track.cameraCutX - vehicle.spec.lengthM
             if (reachedObstacles || events.chassisImpacts > 0 || events.wheelsDetachedThisFrame > 0) {
                 phase = Phase.IMPACT
                 slowMotionLeft = SLOW_MOTION_SECONDS
@@ -131,6 +137,7 @@ class GameSession(val spec: VehicleSpec, val level: Level) {
             maxSpeedMph = vehicle.maxSpeed / Level.MPH_TO_MPS,
             rolledOver = vehicle.rolledOver,
             strongestImpactMph = strongestImpact / Level.MPH_TO_MPS,
+            strongestImpactAngleDeg = strongestImpactAngle,
         )
     }
 

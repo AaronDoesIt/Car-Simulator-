@@ -3,6 +3,7 @@ package com.carsimulator.app.game
 import com.carsimulator.app.sim.SimVehicle
 import com.carsimulator.app.sim.Vec3
 import kotlin.math.exp
+import kotlin.math.max
 
 enum class CameraMode { CHASE, SIDE }
 
@@ -72,15 +73,23 @@ class CameraDirector {
                 smoothing = 5.0
             }
         }
+        // Never let a hill swallow the lens.
+        val track = vehicle.track
+        val desiredClamped = desired.copy(
+            eye = desired.eye.withY(max(desired.eye.y, track.heightAt(desired.eye.x, desired.eye.z) + 1.5)),
+        )
         state = if (cut) {
             cut = false
-            desired
+            desiredClamped
         } else {
             val a = 1 - exp(-dt * smoothing)
+            // Smoothing between two above-ground points can still cut through a cliff face,
+            // so clamp the blended eye as well.
+            val eye = Vec3.lerp(state.eye, desiredClamped.eye, a)
             CameraState(
-                eye = Vec3.lerp(state.eye, desired.eye, a),
-                target = Vec3.lerp(state.target, desired.target, a),
-                fovDegrees = state.fovDegrees + (desired.fovDegrees - state.fovDegrees) * a,
+                eye = eye.withY(max(eye.y, track.heightAt(eye.x, eye.z) + 1.5)),
+                target = Vec3.lerp(state.target, desiredClamped.target, a),
+                fovDegrees = state.fovDegrees + (desiredClamped.fovDegrees - state.fovDegrees) * a,
             )
         }
     }

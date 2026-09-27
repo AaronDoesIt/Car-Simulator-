@@ -166,10 +166,17 @@ class Track(
     val boost: BoostStrip,
     /** Where the obstacle section begins: entering it flips the camera. */
     val obstacleStartX: Double,
+    /** Hills the road itself climbs and drops over. */
+    val profile: RoadProfile = RoadProfile.Flat,
+    /** Landscape either side of the road; null means a flat plain. */
+    val terrain: Terrain? = null,
+    /** Where the camera cuts to the side view; defaults to the obstacle start. */
+    val cameraCutX: Double = obstacleStartX,
 ) {
-    val obstacleEndX: Double = obstacles.maxOfOrNull { it.endX } ?: obstacleStartX
+    val obstacleEndX: Double = max(obstacles.maxOfOrNull { it.endX } ?: obstacleStartX, profileEndX())
 
-    fun heightAt(x: Double, z: Double): Double {
+    /** Height contributed by bolted-on obstacles alone (negative inside a crater). */
+    fun obstacleHeightAt(x: Double, z: Double): Double {
         var h = 0.0
         var pit = 0.0
         for (o in obstacles) {
@@ -177,9 +184,25 @@ class Track(
             val v = o.heightAt(x, z)
             if (v >= 0) h = max(h, v) else pit = kotlin.math.min(pit, v)
         }
-        // Off the road the shoulder drops away gently into a grass ditch.
-        val shoulder = if (abs(z) > roadHalfWidth) -(abs(z) - roadHalfWidth) * 0.15 else 0.0
-        return h + pit + shoulder
+        return h + pit
+    }
+
+    /** Landscape height beside the road, 0 on the road itself. */
+    fun terrainHeightAt(x: Double, z: Double): Double = terrain?.heightAt(x, z, roadHalfWidth) ?: 0.0
+
+    /** Road surface plus obstacles: what the wheels and body collide with. */
+    fun heightAt(x: Double, z: Double): Double {
+        val edge = abs(z) - roadHalfWidth
+        // Off the road the shoulder drops into a ditch, then the terrain takes over.
+        val shoulder = if (edge > 0) -kotlin.math.min(edge, Terrain.SHOULDER_M) * 0.15 else 0.0
+        return profile.heightAt(x) + obstacleHeightAt(x, z) + shoulder + terrainHeightAt(x, z)
+    }
+
+    private fun profileEndX(): Double = when (val p = profile) {
+        is RoadProfile.Flat -> 0.0
+        is RoadProfile.RollerCoaster -> p.endX
+        is RoadProfile.CrestJump -> p.crestX + p.dropLength + 80.0
+        is RoadProfile.CanyonDrop -> p.startX + p.dropLength + p.floorLength + p.climbLength
     }
 
     fun normalAt(x: Double, z: Double, eps: Double = 0.05): Vec3 {
