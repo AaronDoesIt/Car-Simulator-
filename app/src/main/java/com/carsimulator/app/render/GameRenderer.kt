@@ -7,9 +7,12 @@ import com.carsimulator.app.game.GameSession
 import com.carsimulator.app.game.Phase
 import com.carsimulator.app.sim.Quat
 import com.carsimulator.app.sim.Vec3
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.atan2
+import kotlin.math.sqrt
 
 /** Snapshot of what the HUD needs, published once per frame. */
 data class HudState(
@@ -26,7 +29,8 @@ data class HudState(
  * Draws one [GameSession] and steps it every frame on the GL thread.
  *
  * Input arrives through [steer] from the UI thread; output leaves through
- * [onHud] every frame and [onResults] once when the run ends.
+ * [onHud] every frame and [onResults] once when the run ends. Drawing keeps
+ * going after that so the wreck stays on screen behind the results card.
  */
 class GameRenderer(
     private val session: GameSession,
@@ -44,13 +48,13 @@ class GameRenderer(
     private lateinit var bodyMesh: GlMesh
     private lateinit var wheelMesh: GlMesh
     private lateinit var vehicleMesh: VehicleMesh
+    private var detailTexture = 0
 
     private val projection = FloatArray(16)
     private val view = FloatArray(16)
     private val viewProjection = FloatArray(16)
     private val model = FloatArray(16)
     private val mvp = FloatArray(16)
-    private val identity = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
 
     private var aspect = 1f
     private var lastFrameNanos = 0L
@@ -64,7 +68,8 @@ class GameRenderer(
         GLES20.glCullFace(GLES20.GL_BACK)
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
         program = ShaderProgram()
-        skyMesh = GlMesh(buildSky())
+        detailTexture = uploadDetailTexture()
+        skyMesh = GlMesh(SkyBuilder.dome())
         trackMeshes = TrackMeshBuilder.build(session.level.track).map { GlMesh(it) }
         sceneryMeshes = SceneryBuilder.build(session.level.track).map { GlMesh(it) }
         shadowMesh = GlMesh(MeshData().also { it.addDisc(24, 0x000000) })
@@ -96,23 +101,19 @@ class GameRenderer(
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         program.use()
-        GLES20.glUniform3f(program.uLightDir, 0.30f, 0.80f, 0.52f)
-        GLES20.glUniform3f(program.uFog, SKY_HORIZON[0], SKY_HORIZON[1], SKY_HORIZON[2])
-        GLES20.glUniform3f(program.uSky, 0.62f, 0.74f, 0.92f)
-        GLES20.glUniform3f(program.uGround, 0.38f, 0.36f, 0.30f)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, detailTexture)
+        GLES20.glUniform1i(program.uDetail, 0)
+        GLES20.glUniform3f(program.uLightDir, LIGHT_DIR[0], LIGHT_DIR[1], LIGHT_DIR[2])
+        GLES20.glUniform3f(program.uFog, FOG[0], FOG[1], FOG[2])
+        GLES20.glUniform3f(program.uSkyZenith, SKY_ZENITH[0], SKY_ZENITH[1], SKY_ZENITH[2])
+        GLES20.glUniform3f(program.uSkyHorizon, SKY_HORIZON[0], SKY_HORIZON[1], SKY_HORIZON[2])
+        GLES20.glUniform3f(program.uGround, 0.32f, 0.31f, 0.25f)
+        GLES20.glUniform3f(program.uSun, 1.0f, 0.95f, 0.86f)
         GLES20.glUniform1f(program.uAlpha, 1f)
 
-        // Sky: full-screen gradient, no depth, no lighting.
-        GLES20.glDepthMask(false)
-        GLES20.glDisable(GLES20.GL_CULL_FACE)
-        GLES20.glUniform1f(program.uUnlit, 1f)
-        setMatricesRaw(identity, identity)
-        skyMesh.draw(program)
-        GLES20.glUniform1f(program.uUnlit, 0f)
-        GLES20.glEnable(GLES20.GL_CULL_FACE)
-        GLES20.glDepthMask(true)
-
         val cam = session.camera.state
+        GLES20.glUniform3f(program.uEye, cam.eye.x.toFloat(), cam.eye.y.toFloat(), cam.eye.z.toFloat())
         Matrix.perspectiveM(projection, 0, cam.fovDegrees.toFloat(), aspect, 0.5f, 3000f)
         Matrix.setLookAtM(
             view, 0,
@@ -121,6 +122,18 @@ class GameRenderer(
             0f, 1f, 0f,
         )
         Matrix.multiplyMM(viewProjection, 0, projection, 0, view, 0)
+
+        // Sky dome rides with the camera: no depth, no culling, shaded by direction.
+        GLES20.glDepthMask(false)
+        GLES20.glDisable(GLES20.GL_CULL_FACE)
+        GLES20.glUniform1f(program.uMode, ShaderProgram.MODE_SKY)
+        Matrix.setIdentityM(model, 0)
+        Matrix.translateM(model, 0, cam.eye.x.toFloat(), cam.eye.y.toFloat(), cam.eye.z.toFloat())
+        setMatrices(model)
+        skyMesh.draw(program)
+        GLES20.glUniform1f(program.uMode, ShaderProgram.MODE_LIT)
+        GLES20.glEnable(GLES20.GL_CULL_FACE)
+        GLES20.glDepthMask(true)
 
         // Landscape and track.
         Matrix.setIdentityM(model, 0)
@@ -133,7 +146,7 @@ class GameRenderer(
         // Soft shadow on the ground under the car, fading as it climbs.
         val groundY = session.level.track.heightAt(v.position.x, v.position.z)
         val heightAbove = (v.position.y - v.spec.cgHeightM - groundY).coerceAtLeast(0.0)
-        val shadowAlpha = (0.45 * (1.0 - heightAbove / 10.0)).coerceIn(0.0, 0.45).toFloat()
+        val shadowAlpha = (0.50 * (1.0 - heightAbove / 10.0)).coerceIn(0.0, 0.50).toFloat()
         if (shadowAlpha > 0.02f) {
             val fwd = v.orientation.forward
             val yawDeg = Math.toDegrees(atan2(fwd.z, fwd.x)).toFloat()
@@ -143,12 +156,12 @@ class GameRenderer(
             Matrix.scaleM(model, 0, (v.spec.lengthM * 0.55).toFloat(), 1f, (v.spec.widthM * 0.62).toFloat())
             GLES20.glEnable(GLES20.GL_BLEND)
             GLES20.glDepthMask(false)
-            GLES20.glUniform1f(program.uUnlit, 1f)
+            GLES20.glUniform1f(program.uMode, ShaderProgram.MODE_UNLIT)
             GLES20.glUniform1f(program.uAlpha, shadowAlpha)
             setMatrices(model)
             shadowMesh.draw(program)
             GLES20.glUniform1f(program.uAlpha, 1f)
-            GLES20.glUniform1f(program.uUnlit, 0f)
+            GLES20.glUniform1f(program.uMode, ShaderProgram.MODE_LIT)
             GLES20.glDepthMask(true)
             GLES20.glDisable(GLES20.GL_BLEND)
         }
@@ -194,11 +207,7 @@ class GameRenderer(
 
     private fun setMatrices(modelMatrix: FloatArray) {
         Matrix.multiplyMM(mvp, 0, viewProjection, 0, modelMatrix, 0)
-        setMatricesRaw(mvp, modelMatrix)
-    }
-
-    private fun setMatricesRaw(mvpMatrix: FloatArray, modelMatrix: FloatArray) {
-        GLES20.glUniformMatrix4fv(program.uMvp, 1, false, mvpMatrix, 0)
+        GLES20.glUniformMatrix4fv(program.uMvp, 1, false, mvp, 0)
         GLES20.glUniformMatrix4fv(program.uModel, 1, false, modelMatrix, 0)
     }
 
@@ -211,20 +220,40 @@ class GameRenderer(
         out[12] = p.x.toFloat(); out[13] = p.y.toFloat(); out[14] = p.z.toFloat(); out[15] = 1f
     }
 
-    /** Two triangles in clip space at the far plane: deep blue up top, pale at the horizon. */
-    private fun buildSky(): MeshData {
-        val m = MeshData()
-        val z = 0.9999
-        val bl = m.addVertex(Vec3(-1.0, -1.0, z), Vec3.Y, SKY_HORIZON[0], SKY_HORIZON[1], SKY_HORIZON[2])
-        val br = m.addVertex(Vec3(1.0, -1.0, z), Vec3.Y, SKY_HORIZON[0], SKY_HORIZON[1], SKY_HORIZON[2])
-        val tr = m.addVertex(Vec3(1.0, 1.0, z), Vec3.Y, SKY_ZENITH[0], SKY_ZENITH[1], SKY_ZENITH[2])
-        val tl = m.addVertex(Vec3(-1.0, 1.0, z), Vec3.Y, SKY_ZENITH[0], SKY_ZENITH[1], SKY_ZENITH[2])
-        m.addQuad(bl, br, tr, tl)
-        return m
+    private fun uploadDetailTexture(): Int {
+        val bytes = detailBytes
+        val buf = ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder())
+        buf.put(bytes).position(0)
+        val ids = IntArray(1)
+        GLES20.glGenTextures(1, ids, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0])
+        GLES20.glTexImage2D(
+            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, DetailTexture.SIZE, DetailTexture.SIZE, 0,
+            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf,
+        )
+        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT)
+        return ids[0]
     }
 
     companion object {
-        private val SKY_HORIZON = floatArrayOf(0.80f, 0.88f, 0.97f)
-        private val SKY_ZENITH = floatArrayOf(0.22f, 0.46f, 0.90f)
+        private val SKY_HORIZON = floatArrayOf(0.74f, 0.83f, 0.94f)
+        private val SKY_ZENITH = floatArrayOf(0.19f, 0.40f, 0.84f)
+        private val FOG = floatArrayOf(0.74f, 0.82f, 0.92f)
+        private val LIGHT_DIR = floatArrayOf(0.35f, 0.75f, 0.45f).let { d ->
+            val l = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
+            floatArrayOf(d[0] / l, d[1] / l, d[2] / l)
+        }
+
+        /** Generated once per process; every surface (re)creation re-uploads the same bytes. */
+        private val detailBytes: ByteArray by lazy { DetailTexture.build() }
+
+        /** Build the texture ahead of the first run so the GL thread does not stall on it. */
+        fun warmUp() {
+            Thread({ detailBytes.size }, "detail-texture").apply { isDaemon = true }.start()
+        }
     }
 }

@@ -10,27 +10,36 @@ import kotlin.math.floor
  * Turns the track heightfield into coloured grid meshes: asphalt with edge
  * lines and centre dashes, a glowing boost strip, yellow-and-black obstacle
  * stripes, dark craters, and a landscape that goes grass, rock, snow with
- * altitude. Sampling is dense on the road and coarse out on the mountains.
+ * altitude. Sampling is dense on the road and coarse out on the mountains,
+ * and the grid runs far enough that the world's edge is lost in the fog.
  */
 object TrackMeshBuilder {
 
     private const val COARSE_STEP = 4.0
+    private const val FAR_STEP = 8.0
     private const val FINE_STEP = 0.25
+    private const val MARGIN_BEHIND = 320.0
+    private const val MARGIN_AHEAD = 480.0
+
+    /** Colour and material of one sample of the ground. */
+    class Surface(val r: Float, val g: Float, val b: Float, val material: Float)
 
     /** Each returned mesh stays under the 16-bit index limit. */
     fun build(track: Track): List<MeshData> {
         val xs = ArrayList<Double>()
-        var x = -80.0
+        var x = -MARGIN_BEHIND
         val fineStart = track.obstacleStartX - 4.0
         val fineEnd = (track.obstacles.maxOfOrNull { it.endX } ?: track.obstacleStartX) + 4.0
-        while (x <= track.lengthX + 80.0) {
+        while (x <= track.lengthX + MARGIN_AHEAD) {
             xs.add(x)
             val inFine = x >= fineStart - COARSE_STEP && x <= fineEnd
             val inBoost = x >= track.boost.startX - COARSE_STEP && x <= track.boost.endX
+            val inPlay = x >= -80.0 && x <= track.lengthX + 80.0
             x += when {
                 inFine -> FINE_STEP
                 inBoost -> 1.0
-                else -> COARSE_STEP
+                inPlay -> COARSE_STEP
+                else -> FAR_STEP
             }
         }
         val zs = lateralSamples()
@@ -47,8 +56,8 @@ object TrackMeshBuilder {
                 for ((c, zc) in zs.withIndex()) {
                     val h = track.heightAt(xr, zc)
                     val n = track.normalAt(xr, zc, eps = if (abs(zc) > track.roadHalfWidth + 20) 1.0 else 0.05)
-                    val (cr, cg, cb) = colorAt(track, xr, zc, n)
-                    ids[r - row][c] = m.addVertex(Vec3(xr, h, zc), n, cr, cg, cb)
+                    val s = surfaceAt(track, xr, zc, n)
+                    ids[r - row][c] = m.addVertex(Vec3(xr, h, zc), n, s.r, s.g, s.b, s.material)
                 }
             }
             for (r in 0 until endRow - row) {
@@ -63,7 +72,7 @@ object TrackMeshBuilder {
         return meshes
     }
 
-    /** Dense across the road, then progressively coarser out to the mountains. */
+    /** Dense across the road, then progressively coarser out to the mountains and beyond. */
     fun lateralSamples(): List<Double> {
         val half = ArrayList<Double>()
         var z = 0.0
@@ -74,39 +83,43 @@ object TrackMeshBuilder {
         while (z <= 140.0) { half.add(z); z += 6.0 }
         z = 155.0
         while (z <= 320.0) { half.add(z); z += 15.0 }
+        z = 370.0
+        while (z <= 1100.0) { half.add(z); z += 60.0 }
         val out = ArrayList<Double>()
         for (i in half.indices.reversed()) if (half[i] != 0.0) out.add(-half[i])
         out.addAll(half)
         return out
     }
 
-    private fun colorAt(track: Track, x: Double, z: Double, normal: Vec3): Triple<Float, Float, Float> {
+    fun surfaceAt(track: Track, x: Double, z: Double, normal: Vec3): Surface {
         val onRoad = abs(z) <= track.roadHalfWidth
-        if (!onRoad) return landColor(track, x, z, normal)
+        if (!onRoad) return landSurface(track, x, z, normal)
         val obstacle = track.obstacleHeightAt(x, z)
-        if (obstacle < -0.01) return Triple(0.16f, 0.13f, 0.11f)
+        if (obstacle < -0.01) return Surface(0.17f, 0.14f, 0.12f, Material.ASPHALT)
         if (obstacle > 0.01) {
             val stripe = floor(x / 0.45).toInt() % 2 == 0
-            return if (stripe) Triple(0.95f, 0.75f, 0.10f) else Triple(0.15f, 0.15f, 0.15f)
+            return if (stripe) Surface(0.95f, 0.75f, 0.10f, Material.ASPHALT) else Surface(0.16f, 0.16f, 0.16f, Material.ASPHALT)
         }
         if (track.boost.contains(x)) {
             val pulse = floor(x / 1.0).toInt() % 2 == 0
-            return if (pulse) Triple(0.15f, 0.65f, 1.0f) else Triple(0.05f, 0.35f, 0.75f)
+            return if (pulse) Surface(0.25f, 0.70f, 1.0f, Material.LAMP) else Surface(0.08f, 0.38f, 0.80f, Material.LAMP)
         }
         val edge = abs(abs(z) - track.roadHalfWidth) < 0.5
-        if (edge) return Triple(0.92f, 0.92f, 0.92f)
+        if (edge) return Surface(0.90f, 0.90f, 0.90f, Material.ASPHALT)
         val centreDash = abs(z) < 0.2 && floor(x / 4.0).toInt() % 2 == 0
-        if (centreDash) return Triple(0.95f, 0.85f, 0.35f)
-        val grain = ((floor(x / 2.0) * 7 + floor(z / 2.0) * 13).toInt() and 3) * 0.012f
-        return Triple(0.35f + grain, 0.35f + grain, 0.37f + grain)
+        if (centreDash) return Surface(0.93f, 0.82f, 0.32f, Material.ASPHALT)
+        // Lanes wear lighter where the tyres run.
+        val wear = 0.02f * (1f - (abs(abs(z) - 3.5) / 2.0).coerceIn(0.0, 1.0).toFloat())
+        val grain = ((floor(x / 2.0) * 7 + floor(z / 2.0) * 13).toInt() and 3) * 0.010f
+        return Surface(0.33f + grain + wear, 0.33f + grain + wear, 0.35f + grain + wear, Material.ASPHALT)
     }
 
-    private fun landColor(track: Track, x: Double, z: Double, normal: Vec3): Triple<Float, Float, Float> {
+    private fun landSurface(track: Track, x: Double, z: Double, normal: Vec3): Surface {
         val altitude = track.terrainHeightAt(x, z)
         val slope = 1.0 - normal.y // 0 flat, larger on steep faces
-        val grassTint = ((floor(x / 9.0) + floor(z / 9.0)).toInt() and 1) * 0.035f
-        val grass = floatArrayOf(0.29f + grassTint, 0.54f + grassTint, 0.21f)
-        val rock = floatArrayOf(0.46f, 0.42f, 0.37f)
+        val grassTint = ((floor(x / 9.0) + floor(z / 9.0)).toInt() and 1) * 0.03f
+        val grass = floatArrayOf(0.30f + grassTint, 0.52f + grassTint, 0.20f)
+        val rock = floatArrayOf(0.47f, 0.43f, 0.38f)
         val snow = floatArrayOf(0.93f, 0.95f, 0.98f)
         val rockBlend = (Terrain.smoothstep((altitude - 35.0) / 40.0) + slope * 1.6).coerceIn(0.0, 1.0).toFloat()
         val snowBlend = (Terrain.smoothstep((altitude - 110.0) / 50.0) * (1.0 - slope * 1.2)).coerceIn(0.0, 1.0).toFloat()
@@ -114,6 +127,6 @@ object TrackMeshBuilder {
             val gr = grass[i] + (rock[i] - grass[i]) * rockBlend
             gr + (snow[i] - gr) * snowBlend
         }
-        return Triple(out[0], out[1], out[2])
+        return Surface(out[0], out[1], out[2], Material.terrain(rockBlend * (1f - snowBlend * 0.7f)))
     }
 }

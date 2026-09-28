@@ -90,7 +90,11 @@ class GameSession(val spec: VehicleSpec, val level: Level) {
                     timeScale += (1.0 - timeScale) * min(1.0, dt * 3.0)
                 }
             }
-            Phase.RESULTS -> return
+            Phase.RESULTS -> {
+                // The wreck stays on screen behind the results card; let the camera settle on it.
+                camera.update(dt, vehicle, resultsFraming = true)
+                return
+            }
         }
 
         val events = vehicle.advance(dt * timeScale)

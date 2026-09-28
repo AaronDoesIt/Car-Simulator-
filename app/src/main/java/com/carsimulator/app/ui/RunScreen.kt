@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.carsimulator.app.game.GameSession
 import com.carsimulator.app.game.Phase
+import com.carsimulator.app.game.RunResult
 import com.carsimulator.app.render.GameRenderer
 import com.carsimulator.app.render.HudState
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +39,8 @@ import kotlin.math.roundToInt
 
 /**
  * Hosts the GL view. Dragging a finger left or right anywhere on the screen
- * steers; the wheel returns to centre when the finger lifts.
+ * steers; the wheel returns to centre when the finger lifts. Once [result]
+ * arrives the wreck stays on screen and the score card is laid over it.
  */
 @Composable
 fun RunScreen(
@@ -46,6 +48,10 @@ fun RunScreen(
     hudFlow: StateFlow<HudState>,
     onHud: (HudState) -> Unit,
     onResults: () -> Unit,
+    result: RunResult?,
+    onNextLevel: () -> Unit,
+    onRetry: () -> Unit,
+    onGarage: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -96,33 +102,37 @@ fun RunScreen(
                 },
         )
 
-        Hud(hud, session, modifier = Modifier.align(Alignment.TopStart))
+        if (result == null) {
+            Hud(hud, session, modifier = Modifier.align(Alignment.TopStart))
 
-        if (hud.phase == Phase.LAUNCH && hud.countdown > 0) {
-            Text(
-                text = ceil(hud.countdown).toInt().toString(),
-                color = Color.White,
-                fontSize = 120.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        }
-        if (hud.phase == Phase.LAUNCH && hud.countdown <= 0 && !hud.boosted) {
-            Text(
-                text = "DRAG TO STEER  →  HIT THE BLUE STRIP",
-                color = Color.White.copy(alpha = 0.85f),
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
-            )
-        }
-        if (hud.timeScale < 0.6) {
-            Text(
-                text = "SLOW MOTION",
-                color = Color(0xFFFFA000),
-                fontWeight = FontWeight.Black,
-                fontSize = 22.sp,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
-            )
+            if (hud.phase == Phase.LAUNCH && hud.countdown > 0) {
+                Text(
+                    text = ceil(hud.countdown).toInt().toString(),
+                    color = Color.White,
+                    fontSize = 120.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            if (hud.phase == Phase.LAUNCH && hud.countdown <= 0 && !hud.boosted) {
+                Text(
+                    text = "DRAG TO STEER  →  HIT THE BLUE STRIP",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                )
+            }
+            if (hud.timeScale < 0.6) {
+                Text(
+                    text = "SLOW MOTION",
+                    color = Color(0xFFFFA000),
+                    fontWeight = FontWeight.Black,
+                    fontSize = 22.sp,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                )
+            }
+        } else {
+            ResultsOverlay(result, onNextLevel, onRetry, onGarage)
         }
     }
 }

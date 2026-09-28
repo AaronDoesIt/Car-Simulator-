@@ -44,7 +44,11 @@ class CameraDirector {
         cut = true
     }
 
-    fun update(dt: Double, vehicle: SimVehicle) {
+    /**
+     * [resultsFraming] drops the aim point so the wreck sits in the upper part
+     * of the frame, leaving the lower part for the score card.
+     */
+    fun update(dt: Double, vehicle: SimVehicle, resultsFraming: Boolean = false) {
         val pos = vehicle.position
         val desired: CameraState
         val smoothing: Double
@@ -65,9 +69,10 @@ class CameraDirector {
             CameraMode.SIDE -> {
                 sideDistance += (sideDistanceTarget - sideDistance) * (1 - exp(-dt * 2.5))
                 val lead = vehicle.velocity.x * 0.12
+                val drop = if (resultsFraming) sideDistance * 0.45 else 0.0
                 desired = CameraState(
                     eye = Vec3(pos.x + lead, 3.0 + sideDistance * 0.18, sideSign * sideDistance),
-                    target = Vec3(pos.x + lead * 0.5, pos.y, pos.z),
+                    target = Vec3(pos.x + lead * 0.5, pos.y - drop, pos.z),
                     fovDegrees = 55.0,
                 )
                 smoothing = 5.0

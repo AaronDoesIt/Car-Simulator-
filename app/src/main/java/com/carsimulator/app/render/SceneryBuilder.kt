@@ -33,7 +33,7 @@ object SceneryBuilder {
                     val steep = 1.0 - track.normalAt(px, z, eps = 1.0).y
                     if (m.vertexCount > 58000) { meshes.add(m); m = MeshData() }
                     if (steep > 0.35 || h1 > 0.9) {
-                        boulder(m, Vec3(px, y, z), 0.8 + h2 * 1.8)
+                        boulder(m, Vec3(px, y, z), 0.8 + h2 * 1.8, h3)
                     } else {
                         tree(m, Vec3(px, y - 0.2, z), 4.5 + h2 * 4.0, 1.6 + h3 * 1.4, shade = h1)
                     }
@@ -47,18 +47,32 @@ object SceneryBuilder {
     }
 
     private fun tree(m: MeshData, base: Vec3, height: Double, radius: Double, shade: Double) {
-        val trunkH = height * 0.28
-        m.addBox(base + Vec3(0.0, trunkH / 2, 0.0), Vec3(0.36, trunkH, 0.36), 0x5A3A1E)
-        val g = (0.32 + shade * 0.25).toFloat()
-        val green = ((0.10f * 255).toInt() shl 16) or ((g * 255).toInt() shl 8) or (0.12f * 255).toInt()
-        // Two stacked cones read as a conifer.
-        m.addCone(base + Vec3(0.0, trunkH * 0.8, 0.0), radius, height * 0.55, 7, green)
-        m.addCone(base + Vec3(0.0, trunkH * 0.8 + height * 0.30, 0.0), radius * 0.72, height * 0.48, 7, green)
+        val trunkH = height * 0.30
+        m.addBox(base + Vec3(0.0, trunkH / 2, 0.0), Vec3(0.34, trunkH, 0.34), 0x4E3418, Material.BARK)
+        val g = (0.30 + shade * 0.22).toFloat()
+        val green = MeshData.pack(0.09f + shade.toFloat() * 0.04f, g, 0.11f)
+        val lower = MeshData.shade(green, 0.85f)
+        // Three stacked cones, the lowest slightly darker, read as a conifer.
+        m.addCone(base + Vec3(0.0, trunkH * 0.75, 0.0), radius, height * 0.42, 8, lower, Material.FOLIAGE)
+        m.addCone(base + Vec3(0.0, trunkH * 0.75 + height * 0.22, 0.0), radius * 0.80, height * 0.40, 8, green, Material.FOLIAGE)
+        m.addCone(base + Vec3(0.0, trunkH * 0.75 + height * 0.42, 0.0), radius * 0.55, height * 0.34, 8, green, Material.FOLIAGE)
     }
 
-    private fun boulder(m: MeshData, base: Vec3, size: Double) {
-        m.addBox(base + Vec3(0.0, size * 0.35, 0.0), Vec3(size * 1.4, size * 0.8, size), 0x6E6A64)
-        m.addBox(base + Vec3(size * 0.2, size * 0.6, size * 0.15), Vec3(size * 0.7, size * 0.6, size * 0.6), 0x7C7872)
+    private fun boulder(m: MeshData, base: Vec3, size: Double, seed: Double) {
+        // Two overlapping hulls with hashed corner jitter so no two rocks are the same box.
+        fun jitter(k: Int) = (hash(k, (seed * 1000).toInt(), 3) - 0.5) * size * 0.25
+        val hx = size * 0.7; val hz = size * 0.5; val h = size * 0.8
+        val c = base + Vec3(0.0, size * 0.05, 0.0)
+        m.addHull(
+            arrayOf(
+                c + Vec3(-hx + jitter(0), 0.0, -hz + jitter(1)), c + Vec3(hx + jitter(2), 0.0, -hz + jitter(3)),
+                c + Vec3(hx + jitter(4), 0.0, hz + jitter(5)), c + Vec3(-hx + jitter(6), 0.0, hz + jitter(7)),
+                c + Vec3(-hx * 0.6 + jitter(8), h, -hz * 0.6 + jitter(9)), c + Vec3(hx * 0.6 + jitter(10), h * 0.9, -hz * 0.6 + jitter(11)),
+                c + Vec3(hx * 0.6 + jitter(12), h * 0.95, hz * 0.6 + jitter(13)), c + Vec3(-hx * 0.6 + jitter(14), h * 0.85, hz * 0.6 + jitter(15)),
+            ),
+            IntArray(6) { 0x6E6A64 }, Material.BARK,
+        )
+        m.addBox(base + Vec3(size * 0.2, size * 0.55, size * 0.15), Vec3(size * 0.7, size * 0.6, size * 0.6), 0x7C7872, Material.BARK)
     }
 
     private fun hash(i: Int, band: Int, salt: Int): Double {

@@ -12,8 +12,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.carsimulator.app.render.GameRenderer
 import com.carsimulator.app.ui.GarageScreen
-import com.carsimulator.app.ui.ResultsScreen
 import com.carsimulator.app.ui.RunScreen
 
 class MainActivity : ComponentActivity() {
@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        GameRenderer.warmUp()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -36,8 +37,9 @@ class MainActivity : ComponentActivity() {
                 val level by viewModel.level.collectAsStateWithLifecycle()
                 val best by viewModel.bestScore.collectAsStateWithLifecycle()
 
-                when (val s = screen) {
-                    is Screen.Garage -> GarageScreen(
+                val s = screen
+                if (s is Screen.Garage) {
+                    GarageScreen(
                         level = level,
                         selected = selected,
                         bestScore = best,
@@ -45,14 +47,20 @@ class MainActivity : ComponentActivity() {
                         onStart = viewModel::startRun,
                         onResetProgress = viewModel::resetProgress,
                     )
-                    is Screen.Run -> RunScreen(
-                        session = s.session,
+                } else {
+                    // Run and Results share one call site so the GL view (and the wreck in it)
+                    // survives the switch and the score card is drawn over it.
+                    val session = when (s) {
+                        is Screen.Run -> s.session
+                        is Screen.Results -> s.session
+                        else -> error("unreachable")
+                    }
+                    RunScreen(
+                        session = session,
                         hudFlow = viewModel.hud,
                         onHud = viewModel::onHud,
-                        onResults = { runOnUiThread { viewModel.finishRun(s.session) } },
-                    )
-                    is Screen.Results -> ResultsScreen(
-                        result = s.result,
+                        onResults = { runOnUiThread { viewModel.finishRun(session) } },
+                        result = (s as? Screen.Results)?.result,
                         onNextLevel = viewModel::nextLevel,
                         onRetry = viewModel::retry,
                         onGarage = viewModel::backToGarage,
