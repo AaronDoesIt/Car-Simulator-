@@ -9,8 +9,8 @@ import kotlin.math.sin
 
 /**
  * CPU-side triangle mesh. Vertices are interleaved: position (3), normal (3),
- * colour (3), material (1). Everything the game draws is built with this,
- * there are no model files.
+ * colour (3), material (1), uv (2). Everything generated in code leaves uv at
+ * zero; only imported vehicle models use it.
  */
 class MeshData {
     private var vertexData = FloatArray(STRIDE * 256)
@@ -24,7 +24,10 @@ class MeshData {
     fun vertexArray(): FloatArray = vertexData.copyOf(vertexFloats)
     fun indexArray(): ShortArray = indexData.copyOf(indexShorts)
 
-    fun addVertex(p: Vec3, n: Vec3, r: Float, g: Float, b: Float, material: Float = Material.MATTE): Int {
+    fun addVertex(
+        p: Vec3, n: Vec3, r: Float, g: Float, b: Float, material: Float = Material.MATTE,
+        u: Float = 0f, v: Float = 0f,
+    ): Int {
         val i = vertexCount
         check(i < 65535) { "Mesh exceeds 16-bit index range" }
         if (vertexFloats + STRIDE > vertexData.size) vertexData = vertexData.copyOf(vertexData.size * 2)
@@ -34,6 +37,7 @@ class MeshData {
         d[k++] = n.x.toFloat(); d[k++] = n.y.toFloat(); d[k++] = n.z.toFloat()
         d[k++] = r; d[k++] = g; d[k++] = b
         d[k++] = material
+        d[k++] = u; d[k++] = v
         vertexFloats = k
         return i
     }
@@ -315,10 +319,11 @@ class MeshData {
     )
 
     companion object {
-        const val STRIDE = 10
+        const val STRIDE = 12
         const val NORMAL_OFFSET = 3
         const val COLOR_OFFSET = 6
         const val MATERIAL_OFFSET = 9
+        const val UV_OFFSET = 10
 
         fun rgb(color: Int): Triple<Float, Float, Float> = Triple(
             ((color shr 16) and 0xFF) / 255f,

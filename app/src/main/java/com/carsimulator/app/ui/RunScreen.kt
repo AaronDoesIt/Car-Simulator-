@@ -57,7 +57,16 @@ fun RunScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val hud by hudFlow.collectAsStateWithLifecycle()
 
-    val renderer = remember(session) { GameRenderer(session, onHud, onResults) }
+    val assets = context.assets
+    val renderer = remember(session) {
+        GameRenderer(session, onHud, onResults) { path ->
+            try {
+                assets.open(path).use { it.readBytes() }
+            } catch (e: java.io.IOException) {
+                null
+            }
+        }
+    }
     val glView = remember(session) {
         GLSurfaceView(context).apply {
             setEGLContextClientVersion(2)

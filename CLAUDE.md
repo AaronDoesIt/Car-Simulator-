@@ -29,8 +29,13 @@ installs command-line tools, platform 35 and build tools 35.0.0 into
   `GameSession` (LAUNCH → IMPACT → RESULTS, slow motion, scoring),
   `CameraDirector` (chase view, cut to side view on impact).
 - `render/` has `MeshData` and the mesh builders `VehicleMeshBuilder`,
-  `TrackMeshBuilder`, `SceneryBuilder` (pure Kotlin, testable) plus `GlMesh`,
+  `TrackMeshBuilder`, `SceneryBuilder`, `SkyBuilder`, `DetailTexture` and the
+  `VehicleModel` asset reader (pure Kotlin, testable) plus `GlMesh`,
   `ShaderProgram` and `GameRenderer` (Android GL).
+- Imported vehicle bodies live in `app/src/main/assets/vehicles/<id>.mesh` +
+  `.jpg`, produced by `scripts/import_vehicle_glb.py` from a GLB (needs
+  numpy and Pillow). A `VehicleSpec.modelAsset` names one; the renderer falls
+  back to the procedural body when the asset is missing.
 - `ui/` is Compose. `RunScreen` hosts a `GLSurfaceView` and maps finger drag
   to steering. The sim is stepped on the GL thread inside `onDrawFrame`.
 

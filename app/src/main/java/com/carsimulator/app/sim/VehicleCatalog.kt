@@ -24,6 +24,7 @@ object VehicleCatalog {
             engineForceN = 5500.0, dragCoefficient = 0.48,
             colorRgb = 0x1F3A93, accentRgb = 0x111111,
             sourceNote = "The Car Connection / Cars.com 2001 S-10 Reg Cab 108\" WB spec sheet",
+            modelAsset = "vehicles/s10_2001_lifted",
         ),
         VehicleSpec(
             id = "suburban_2001_lifted",

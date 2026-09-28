@@ -333,10 +333,25 @@ class VehicleMesh private constructor(
                 }
             }
 
-            // ---- Damage weights ----------------------------------------------------------
+            return withDamageWeights(spec, m)
+        }
+
+        /**
+         * Wrap an imported body ([VehicleModel]) so it crumples like a built one.
+         * The model is already in the body frame with its wheels cut out.
+         */
+        fun fromModel(spec: VehicleSpec, model: MeshData): VehicleMesh = withDamageWeights(spec, model)
+
+        /** Per-vertex panel weights from where each vertex sits in the spec's envelope. */
+        private fun withDamageWeights(spec: VehicleSpec, m: MeshData): VehicleMesh {
+            val bottom = -(spec.cgHeightM - spec.groundClearanceM)
+            val top = spec.heightM - spec.cgHeightM
+            val xF = spec.frontAxleX + spec.frontOverhang
+            val xR = spec.rearAxleX - spec.rearOverhang
+            val hw = spec.widthM / 2
             val rest = m.positionsCopy()
             val centre = Vec3((xF + xR) / 2, (top + bottom) / 2, 0.0)
-            val halfLen = len / 2
+            val halfLen = (xF - xR) / 2
             val weights = Array(m.vertexCount) { i ->
                 val x = rest[i * 3].toDouble() - centre.x
                 val y = rest[i * 3 + 1].toDouble()

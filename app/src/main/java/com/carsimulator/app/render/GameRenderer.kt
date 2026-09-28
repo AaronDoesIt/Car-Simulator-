@@ -1,7 +1,10 @@
 package com.carsimulator.app.render
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.opengl.GLUtils
 import android.opengl.Matrix
 import com.carsimulator.app.game.GameSession
 import com.carsimulator.app.game.Phase
@@ -36,6 +39,8 @@ class GameRenderer(
     private val session: GameSession,
     private val onHud: (HudState) -> Unit,
     private val onResults: () -> Unit,
+    /** Reads an asset by path, or null when it does not exist. */
+    private val readAsset: (String) -> ByteArray? = { null },
 ) : GLSurfaceView.Renderer {
 
     @Volatile var steer: Double = 0.0
@@ -49,6 +54,8 @@ class GameRenderer(
     private lateinit var wheelMesh: GlMesh
     private lateinit var vehicleMesh: VehicleMesh
     private var detailTexture = 0
+    private var albedoTexture = 0
+    private var bodyIsModel = false
 
     private val projection = FloatArray(16)
     private val view = FloatArray(16)
@@ -73,7 +80,7 @@ class GameRenderer(
         trackMeshes = TrackMeshBuilder.build(session.level.track).map { GlMesh(it) }
         sceneryMeshes = SceneryBuilder.build(session.level.track).map { GlMesh(it) }
         shadowMesh = GlMesh(MeshData().also { it.addDisc(24, 0x000000) })
-        vehicleMesh = VehicleMesh.build(session.spec)
+        vehicleMesh = loadBody()
         bodyMesh = GlMesh(vehicleMesh.data, dynamic = true)
         wheelMesh = GlMesh(VehicleMesh.buildWheel(session.spec))
         lastFrameNanos = 0L
@@ -104,6 +111,9 @@ class GameRenderer(
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, detailTexture)
         GLES20.glUniform1i(program.uDetail, 0)
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, albedoTexture)
+        GLES20.glUniform1i(program.uAlbedo, 1)
         GLES20.glUniform3f(program.uLightDir, LIGHT_DIR[0], LIGHT_DIR[1], LIGHT_DIR[2])
         GLES20.glUniform3f(program.uFog, FOG[0], FOG[1], FOG[2])
         GLES20.glUniform3f(program.uSkyZenith, SKY_ZENITH[0], SKY_ZENITH[1], SKY_ZENITH[2])
@@ -175,7 +185,10 @@ class GameRenderer(
         }
         modelFrom(v.position, v.orientation, model)
         setMatrices(model)
+        // An imported shell has open wheel wells, so both sides of it must draw.
+        if (bodyIsModel) GLES20.glDisable(GLES20.GL_CULL_FACE)
         bodyMesh.draw(program)
+        if (bodyIsModel) GLES20.glEnable(GLES20.GL_CULL_FACE)
 
         // Wheels: attached ones follow the body; torn-off ones tumble on their own.
         for (w in v.wheels) {
@@ -218,6 +231,34 @@ class GameRenderer(
         out[4] = r[1].toFloat(); out[5] = r[4].toFloat(); out[6] = r[7].toFloat(); out[7] = 0f
         out[8] = r[2].toFloat(); out[9] = r[5].toFloat(); out[10] = r[8].toFloat(); out[11] = 0f
         out[12] = p.x.toFloat(); out[13] = p.y.toFloat(); out[14] = p.z.toFloat(); out[15] = 1f
+    }
+
+    /** Imported textured body when the spec names one and the asset loads; otherwise the built one. */
+    private fun loadBody(): VehicleMesh {
+        bodyIsModel = false
+        albedoTexture = 0
+        val asset = session.spec.modelAsset ?: return VehicleMesh.build(session.spec)
+        val meshBytes = readAsset("$asset.mesh") ?: return VehicleMesh.build(session.spec)
+        val imageBytes = readAsset("$asset.jpg") ?: return VehicleMesh.build(session.spec)
+        val bitmap: Bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return VehicleMesh.build(session.spec)
+        val model = try {
+            VehicleModel.parse(meshBytes)
+        } catch (e: IllegalArgumentException) {
+            return VehicleMesh.build(session.spec)
+        }
+        val ids = IntArray(1)
+        GLES20.glGenTextures(1, ids, 0)
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0])
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+        bitmap.recycle()
+        GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR_MIPMAP_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        albedoTexture = ids[0]
+        bodyIsModel = true
+        return VehicleMesh.fromModel(session.spec, model)
     }
 
     private fun uploadDetailTexture(): Int {

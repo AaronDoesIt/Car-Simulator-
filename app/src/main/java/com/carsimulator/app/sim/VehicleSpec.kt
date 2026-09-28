@@ -52,6 +52,8 @@ data class VehicleSpec(
     val colorRgb: Int = 0xC0392B,
     val accentRgb: Int = 0x222222,
     val sourceNote: String = "",
+    /** Asset base name of an imported body mesh (see scripts/import_vehicle_glb.py); null builds one procedurally. */
+    val modelAsset: String? = null,
 ) {
     val frontAxleX: Double get() = wheelbaseM * (1.0 - frontWeightFraction)
     val rearAxleX: Double get() = -wheelbaseM * frontWeightFraction

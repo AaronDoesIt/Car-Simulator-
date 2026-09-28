@@ -15,6 +15,7 @@ class ShaderProgram {
     val aNormal: Int
     val aColor: Int
     val aMaterial: Int
+    val aUv: Int
     val uMvp: Int
     val uModel: Int
     val uLightDir: Int
@@ -27,6 +28,7 @@ class ShaderProgram {
     val uMode: Int
     val uAlpha: Int
     val uDetail: Int
+    val uAlbedo: Int
 
     init {
         val vs = compile(GLES20.GL_VERTEX_SHADER, VERTEX)
@@ -44,6 +46,7 @@ class ShaderProgram {
         aNormal = GLES20.glGetAttribLocation(id, "aNormal")
         aColor = GLES20.glGetAttribLocation(id, "aColor")
         aMaterial = GLES20.glGetAttribLocation(id, "aMaterial")
+        aUv = GLES20.glGetAttribLocation(id, "aUv")
         uMvp = GLES20.glGetUniformLocation(id, "uMvp")
         uModel = GLES20.glGetUniformLocation(id, "uModel")
         uLightDir = GLES20.glGetUniformLocation(id, "uLightDir")
@@ -56,6 +59,7 @@ class ShaderProgram {
         uMode = GLES20.glGetUniformLocation(id, "uMode")
         uAlpha = GLES20.glGetUniformLocation(id, "uAlpha")
         uDetail = GLES20.glGetUniformLocation(id, "uDetail")
+        uAlbedo = GLES20.glGetUniformLocation(id, "uAlbedo")
     }
 
     fun use() = GLES20.glUseProgram(id)
@@ -82,17 +86,20 @@ class ShaderProgram {
             attribute vec3 aNormal;
             attribute vec3 aColor;
             attribute float aMaterial;
+            attribute vec2 aUv;
             varying vec3 vWorld;
             varying vec3 vNormal;
             varying vec3 vColor;
             varying float vMaterial;
             varying float vDepth;
+            varying vec2 vUv;
             void main() {
                 vec4 world = uModel * vec4(aPosition, 1.0);
                 vWorld = world.xyz;
                 vNormal = normalize(mat3(uModel) * aNormal);
                 vColor = aColor;
                 vMaterial = aMaterial;
+                vUv = aUv;
                 gl_Position = uMvp * vec4(aPosition, 1.0);
                 vDepth = gl_Position.w;
             }
@@ -114,11 +121,13 @@ class ShaderProgram {
             uniform float uMode;
             uniform float uAlpha;
             uniform sampler2D uDetail;
+            uniform sampler2D uAlbedo;
             varying vec3 vWorld;
             varying vec3 vNormal;
             varying vec3 vColor;
             varying float vMaterial;
             varying float vDepth;
+            varying vec2 vUv;
 
             vec3 skyColor(vec3 dir) {
                 float t = pow(clamp(dir.y, 0.0, 1.0), 0.5);
@@ -147,8 +156,13 @@ class ShaderProgram {
                 }
 
                 vec3 n = normalize(vNormal);
+                // Imported bodies draw two-sided (their wheel wells are open cuts):
+                // a back face is the inside of the shell, so flip it and keep it dim.
+                float inside = gl_FrontFacing ? 0.0 : 1.0;
+                n = mix(n, -n, inside);
                 vec3 v = normalize(uEye - vWorld);
                 float m = vMaterial;
+                bool textured = false;
 
                 float specStr = 0.0;
                 float shin = 16.0;
@@ -185,8 +199,11 @@ class ShaderProgram {
                     texScale = 0.6;
                 } else if (m < 8.5) {
                     lamp = true;
-                } else {
+                } else if (m < 9.5) {
                     specStr = 0.7; shin = 40.0; refl = 0.40;
+                } else {
+                    textured = true;
+                    specStr = 0.8; shin = 60.0; refl = 0.28;
                 }
 
                 // World-space detail: top-down for flat surfaces, side projection for walls.
@@ -199,7 +216,10 @@ class ShaderProgram {
                 vec4 t = mix(tSide, tTop, abs(n.y));
                 float d = dot(t, dmask) * 0.5 + dot(tMacro, dmask) * 0.5;
                 float detail = 1.0 + (d - 0.5) * 2.0 * detailAmt;
+                vec3 albedo = texture2D(uAlbedo, vUv).rgb;
                 vec3 base = vColor * detail;
+                if (textured) base = albedo;
+                base *= 1.0 - 0.6 * inside;
 
                 float fog = clamp((vDepth - 90.0) / 1100.0, 0.0, 0.92);
 

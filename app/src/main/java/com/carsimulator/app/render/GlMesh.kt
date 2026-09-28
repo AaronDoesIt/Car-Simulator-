@@ -53,6 +53,8 @@ class GlMesh(data: MeshData, private val dynamic: Boolean = false) {
         GLES20.glVertexAttribPointer(program.aColor, 3, GLES20.GL_FLOAT, false, strideBytes, MeshData.COLOR_OFFSET * 4)
         GLES20.glEnableVertexAttribArray(program.aMaterial)
         GLES20.glVertexAttribPointer(program.aMaterial, 1, GLES20.GL_FLOAT, false, strideBytes, MeshData.MATERIAL_OFFSET * 4)
+        GLES20.glEnableVertexAttribArray(program.aUv)
+        GLES20.glVertexAttribPointer(program.aUv, 2, GLES20.GL_FLOAT, false, strideBytes, MeshData.UV_OFFSET * 4)
         GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ibo[0])
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, indexCount, GLES20.GL_UNSIGNED_SHORT, 0)
         GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0)

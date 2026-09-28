@@ -5,8 +5,12 @@ strip with your finger, hit the blue boost strip, and watch what the
 obstacles do to it. Every level launches the car faster and swaps the
 obstacle course.
 
-Kotlin, Jetpack Compose, OpenGL ES 2, no third-party engine. All geometry is
-generated in code; there are no model or texture files.
+Kotlin, Jetpack Compose, OpenGL ES 2, no third-party engine. The world and
+most vehicles are generated in code. Vehicles can also be imported from an
+AI-generated GLB through `scripts/import_vehicle_glb.py`, which aligns the
+model to the physics frame, cuts out its baked wheels and writes a compact
+mesh plus albedo into `app/src/main/assets/vehicles/`; the 2001 S-10 is the
+first one.
 
 ## How a run plays
 

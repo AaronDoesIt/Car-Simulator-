@@ -16,6 +16,8 @@ object Material {
     const val BARK = 7f
     const val LAMP = 8f
     const val ALLOY = 9f
+    /** Albedo comes from the vehicle texture (UV), lit like paint. */
+    const val TEXTURED = 10f
 
     /** Terrain code carrying a 0..1 rock blend. */
     fun terrain(rockBlend: Float): Float = rockBlend.coerceIn(0f, 1f) * 0.9f
